@@ -34,7 +34,7 @@ public class ArmorCapability extends CapabilityItem {
 		
 		this.equipmentSlot = armorBuilder.equipmentSlot;
 		this.weight = armorBuilder.weight;
-		this.stunArmor = armorBuilder.weight;
+		this.stunArmor = armorBuilder.stunArmor;
 	}
 	
 	@Override
@@ -68,8 +68,9 @@ public class ArmorCapability extends CapabilityItem {
 		double stunArmor;
 		
 		protected Builder() {
-			weight = -1.0D;
-			stunArmor = -1.0D;
+			this.constructor = ArmorCapability::new;
+			this.weight = -1.0D;
+			this.stunArmor = -1.0D;
 		}
 		
 		public Builder item(Item item) {

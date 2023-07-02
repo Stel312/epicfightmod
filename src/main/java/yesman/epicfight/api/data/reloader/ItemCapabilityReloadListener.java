@@ -59,7 +59,7 @@ public class ItemCapabilityReloadListener extends SimpleJsonResourceReloadListen
 			String path = rl.getPath();
 			
 			if (path.contains("/")) {
-				String[] str = path.split("/");
+				String[] str = path.split("/", 2);
 				ResourceLocation registryName = new ResourceLocation(rl.getNamespace(), str[1]);
 				Item item = ForgeRegistries.ITEMS.getValue(registryName);
 				
@@ -96,7 +96,6 @@ public class ItemCapabilityReloadListener extends SimpleJsonResourceReloadListen
 		
 		if (tag.contains("attributes")) {
 			CompoundTag attributes = tag.getCompound("attributes");
-			
 			builder.weight(attributes.getDouble("weight")).stunArmor(attributes.getDouble("stun_armor"));
 		}
 		

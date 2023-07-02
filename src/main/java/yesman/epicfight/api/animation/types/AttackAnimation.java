@@ -1,6 +1,5 @@
 package yesman.epicfight.api.animation.types;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -8,6 +7,7 @@ import java.util.Set;
 
 import javax.annotation.Nullable;
 
+import com.google.common.collect.Maps;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Vector3f;
 
@@ -30,16 +30,17 @@ import yesman.epicfight.api.animation.JointTransform;
 import yesman.epicfight.api.animation.Keyframe;
 import yesman.epicfight.api.animation.Pose;
 import yesman.epicfight.api.animation.TransformSheet;
-import yesman.epicfight.api.animation.property.Property.ActionAnimationProperty;
-import yesman.epicfight.api.animation.property.Property.AttackAnimationProperty;
-import yesman.epicfight.api.animation.property.Property.AttackPhaseProperty;
-import yesman.epicfight.api.animation.types.EntityState.Translation;
+import yesman.epicfight.api.animation.property.AnimationProperty.ActionAnimationCoordSetter;
+import yesman.epicfight.api.animation.property.AnimationProperty.ActionAnimationProperty;
+import yesman.epicfight.api.animation.property.AnimationProperty.AttackAnimationProperty;
+import yesman.epicfight.api.animation.property.AnimationProperty.AttackPhaseProperty;
+import yesman.epicfight.api.animation.property.AnimationProperty.StaticAnimationProperty;
 import yesman.epicfight.api.collider.Collider;
 import yesman.epicfight.api.model.Model;
-import yesman.epicfight.api.utils.game.AttackResult;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource.StunType;
-import yesman.epicfight.api.utils.game.HitEntitySet;
+import yesman.epicfight.api.utils.AttackResult;
+import yesman.epicfight.api.utils.ExtendedDamageSource;
+import yesman.epicfight.api.utils.ExtendedDamageSource.StunType;
+import yesman.epicfight.api.utils.HitEntityList;
 import yesman.epicfight.api.utils.math.ExtraDamageType;
 import yesman.epicfight.api.utils.math.MathUtils;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
@@ -56,73 +57,78 @@ import yesman.epicfight.world.entity.eventlistener.DealtDamageEvent;
 import yesman.epicfight.world.entity.eventlistener.PlayerEventListener.EventType;
 
 public class AttackAnimation extends ActionAnimation {
+	protected static final ActionAnimationCoordSetter COMMON_COORD_SETTER = (self, entitypatch, transformSheet) -> {
+		LivingEntity attackTarget = entitypatch.getTarget();
+		
+		if (!self.getRealAnimation().getProperty(AttackAnimationProperty.FIXED_MOVE_DISTANCE).orElse(false) && attackTarget != null) {
+			TransformSheet transform = self.getTransfroms().get("Root").copyAll();
+			Keyframe[] keyframes = transform.getKeyframes();
+			int startFrame = 0;
+			int endFrame = transform.getKeyframes().length - 1;
+			Vec3f keyLast = keyframes[endFrame].transform().translation();
+			Vec3 pos = entitypatch.getOriginal().getEyePosition();
+			Vec3 targetpos = attackTarget.position();
+			float horizontalDistance = Math.max((float)targetpos.subtract(pos).horizontalDistance() - (attackTarget.getBbWidth() + entitypatch.getOriginal().getBbWidth()) * 0.75F, 0.0F);
+			Vec3f worldPosition = new Vec3f(keyLast.x, 0.0F, -horizontalDistance);
+			float scale = Math.min(worldPosition.length() / keyLast.length(), 2.0F);
+			
+			for (int i = startFrame; i <= endFrame; i++) {
+				Vec3f translation = keyframes[i].transform().translation();
+				translation.z *= scale;
+			}
+			
+			transformSheet.readFrom(transform);
+		} else {
+			transformSheet.readFrom(self.getTransfroms().get("Root"));
+		}
+	};
+	
 	public final Phase[] phases;
 	
 	public AttackAnimation(float convertTime, float antic, float preDelay, float contact, float recovery, @Nullable Collider collider, String index, String path, Model model) {
-		this(convertTime, path, model, new Phase(antic, preDelay, contact, recovery, index, collider));
+		this(convertTime, path, model, new Phase(0.0F, antic, preDelay, contact, recovery, Float.MAX_VALUE, index, collider));
 	}
 	
 	public AttackAnimation(float convertTime, float antic, float preDelay, float contact, float recovery, InteractionHand hand, @Nullable Collider collider, String index, String path, Model model) {
-		this(convertTime, path, model, new Phase(antic, preDelay, contact, recovery, hand, index, collider));
+		this(convertTime, path, model, new Phase(0.0F, antic, preDelay, contact, recovery, Float.MAX_VALUE, hand, index, collider));
 	}
 	
 	public AttackAnimation(float convertTime, String path, Model model, Phase... phases) {
 		super(convertTime, path, model);
 		
-		this.addProperty(ActionAnimationProperty.COORD_SET_BEGIN, (self, entitypatch, transformSheet) -> {
-			LivingEntity attackTarget = entitypatch.getTarget();
-			
-			if (!self.getRealAnimation().getProperty(AttackAnimationProperty.FIXED_MOVE_DISTANCE).orElse(false) && attackTarget != null) {
-				TransformSheet transform = self.getTransfroms().get("Root").copyAll();
-				Keyframe[] keyframes = transform.getKeyframes();
-				int startFrame = 0;
-				int endFrame = transform.getKeyframes().length - 1;
-				Vec3f keyLast = keyframes[endFrame].transform().translation();
-				Vec3 pos = entitypatch.getOriginal().getEyePosition();
-				Vec3 targetpos = attackTarget.position();
-				float horizontalDistance = Math.max((float)targetpos.subtract(pos).horizontalDistance() - (attackTarget.getBbWidth() + entitypatch.getOriginal().getBbWidth()) * 0.75F, 0.0F);
-				Vec3f worldPosition = new Vec3f(keyLast.x, 0.0F, -horizontalDistance);
-				float scale = Math.min(worldPosition.length() / keyLast.length(), 2.0F);
-				
-				for (int i = startFrame; i <= endFrame; i++) {
-					Vec3f translation = keyframes[i].transform().translation();
-					translation.z *= scale;
-				}
-				
-				transformSheet.readFrom(transform);
-			} else {
-				transformSheet.readFrom(self.getTransfroms().get("Root"));
-			}
-		});
-		
-		this.addProperty(ActionAnimationProperty.COORD_SET_TICK, (self, entitypatch, transformSheet) -> {
-			LivingEntity attackTarget = entitypatch.getTarget();
-			
-			if (!self.getRealAnimation().getProperty(AttackAnimationProperty.FIXED_MOVE_DISTANCE).orElse(false) && attackTarget != null) {
-				TransformSheet transform = self.getTransfroms().get("Root").copyAll();
-				Keyframe[] keyframes = transform.getKeyframes();
-				int startFrame = 0;
-				int endFrame = transform.getKeyframes().length - 1;
-				Vec3f keyLast = keyframes[endFrame].transform().translation();
-				Vec3 pos = entitypatch.getOriginal().getEyePosition();
-				Vec3 targetpos = attackTarget.position();
-				float horizontalDistance = Math.max((float)targetpos.subtract(pos).horizontalDistance() - (attackTarget.getBbWidth() + entitypatch.getOriginal().getBbWidth()) * 0.75F, 0.0F);
-				Vec3f worldPosition = new Vec3f(keyLast.x, 0.0F, -horizontalDistance);
-				float scale = Math.min(worldPosition.length() / keyLast.length(), 2.0F);
-				
-				for (int i = startFrame; i <= endFrame; i++) {
-					Vec3f translation = keyframes[i].transform().translation();
-					translation.z *= scale;
-				}
-				
-				transformSheet.readFrom(transform);
-			} else {
-				transformSheet.readFrom(self.getTransfroms().get("Root"));
-			}
-		});
-		
-		this.addProperty(ActionAnimationProperty.INTERRUPT_PREVIOUS_DELTA_MOVEMENT, true);
+		this.addProperty(ActionAnimationProperty.COORD_SET_BEGIN, COMMON_COORD_SETTER);
+		this.addProperty(ActionAnimationProperty.COORD_SET_TICK, COMMON_COORD_SETTER);
+		this.addProperty(ActionAnimationProperty.STOP_MOVEMENT, true);
 		this.phases = phases;
+		
+		this.stateSpectrumBlueprint.clear();
+		
+		for (Phase phase : phases) {
+			
+			float preDelay = phase.preDelay;
+			
+			if (preDelay == 0.0F) {
+				preDelay += 0.01F;
+			}
+			
+			this.stateSpectrumBlueprint
+				.newTimePair(phase.start,preDelay)
+				.addState(EntityState.PHASE_LEVEL, 1)
+				.newTimePair(phase.start, phase.contact + 0.01F)
+				.addState(EntityState.CAN_SKILL_EXECUTION, false)
+				.newTimePair(phase.start, phase.recovery)
+				.addState(EntityState.MOVEMENT_LOCKED, true)
+				.addState(EntityState.CAN_BASIC_ATTACK, false)
+				.newTimePair(phase.start, phase.end)
+				.addState(EntityState.INACTION, true)
+				.newTimePair(phase.antic, phase.recovery)
+				.addState(EntityState.TURNING_LOCKED, true)
+				.newTimePair(preDelay, phase.contact + 0.01F)
+				.addState(EntityState.ATTACKING, true)
+				.addState(EntityState.PHASE_LEVEL, 2)
+				.newTimePair(phase.contact + 0.01F, phase.end)
+				.addState(EntityState.PHASE_LEVEL, 3);
+		}
 	}
 	
 	@Override
@@ -137,7 +143,7 @@ public class AttackAnimation extends ActionAnimation {
 			EntityState prevState = this.getState(prevElapsedTime);
 			Phase phase = this.getPhaseByTime(elapsedTime);
 			
-			if (state == EntityState.ROTATABLE_PRE_DELAY) {
+			if (state.getLevel() == 1 && !state.turningLocked()) {
 				if (entitypatch instanceof MobPatch) {
 					((Mob)entitypatch.getOriginal()).getNavigation().stop();
 					entitypatch.getOriginal().attackAnim = 2;
@@ -187,9 +193,10 @@ public class AttackAnimation extends ActionAnimation {
 		List<Entity> list = collider.updateAndSelectCollideEntity(entitypatch, this, prevPoseTime, poseTime, phase.getColliderJointName(), this.getPlaySpeed(entitypatch));
 		
 		if (list.size() > 0) {
-			HitEntitySet hitEntities = new HitEntitySet(entitypatch, list, phase.getProperty(AttackPhaseProperty.HIT_PRIORITY).orElse(HitEntitySet.Priority.DISTANCE));
+			HitEntityList hitEntities = new HitEntityList(entitypatch, list, phase.getProperty(AttackPhaseProperty.HIT_PRIORITY).orElse(HitEntityList.Priority.DISTANCE));
 			boolean flag1 = true;
 			int maxStrikes = this.getMaxStrikes(entitypatch, phase);
+			entitypatch.getOriginal().setLastHurtMob(list.get(0));
 			
 			while (entitypatch.currentlyAttackedEntity.size() < maxStrikes && hitEntities.next()) {
 				Entity e = hitEntities.getEntity();
@@ -237,30 +244,17 @@ public class AttackAnimation extends ActionAnimation {
 	}
 	
 	@Override
-	public EntityState getState(float time) {
-		Phase phase = this.getPhaseByTime(time);
-		EntityState state;
-		
-		if (phase.antic >= time)
-			state = EntityState.ROTATABLE_PRE_DELAY;
-		else if (phase.antic < time && phase.preDelay > time)
-			state = EntityState.PRE_DELAY;
-		else if (phase.preDelay <= time && phase.contact >= time)
-			state = EntityState.CONTACT;
-		else if (phase.recovery > time)
-			state = EntityState.RECOVERY;
-		else
-			state = EntityState.CANCELABLE_RECOVERY;
-		
+	protected void onLoaded() {
 		if (!this.getProperty(AttackAnimationProperty.LOCK_ROTATION).orElse(false)) {
-			state = EntityState.translation(state, Translation.TO_ROTATABLE);
+			this.stateSpectrumBlueprint.newTimePair(0.0F, Float.MAX_VALUE).addStateRemoveOld(EntityState.TURNING_LOCKED, false);
 		}
 		
-		return state;
+		super.onLoaded();
 	}
 	
 	public Collider getCollider(LivingEntityPatch<?> entitypatch, float elapsedTime) {
 		Phase phase = this.getPhaseByTime(elapsedTime);
+		
 		return phase.collider != null ? phase.collider : entitypatch.getColliderMatching(phase.hand);
 	}
 	
@@ -274,6 +268,7 @@ public class AttackAnimation extends ActionAnimation {
 				return (LivingEntity)parentEntity;
 			}
 		}
+		
 		return null;
 	}
 	
@@ -282,7 +277,7 @@ public class AttackAnimation extends ActionAnimation {
 	}
 	
 	protected float getDamageTo(LivingEntityPatch<?> entitypatch, LivingEntity target, Phase phase, ExtendedDamageSource source) {
-		float totalDamage = phase.getProperty(AttackPhaseProperty.DAMAGE).map((valueCorrector) -> valueCorrector.getTotalValue(entitypatch.calculateDamageTo(target, source, phase.hand))).orElse(entitypatch.calculateDamageTo(target, source, phase.hand));
+		float totalDamage = phase.getProperty(AttackPhaseProperty.DAMAGE).map((valueCorrector) -> valueCorrector.getTotalValue(entitypatch.getDamageTo(target, source, phase.hand))).orElse(entitypatch.getDamageTo(target, source, phase.hand));
 		ExtraDamageType extraCalculator = phase.getProperty(AttackPhaseProperty.EXTRA_DAMAGE).orElse(null);
 		
 		if (extraCalculator != null) {
@@ -331,6 +326,7 @@ public class AttackAnimation extends ActionAnimation {
 	@Override
 	public Pose getPoseByTime(LivingEntityPatch<?> entitypatch, float time, float partialTicks) {
 		Pose pose = super.getPoseByTime(entitypatch, time, partialTicks);
+		
 		this.getProperty(AttackAnimationProperty.ROTATE_X).ifPresent((flag) -> {
 			if (flag) {
 				float pitch = entitypatch.getAttackDirectionPitch();
@@ -343,20 +339,29 @@ public class AttackAnimation extends ActionAnimation {
 				}
 			}
 		});
+		
 		return pose;
 	}
 	
 	@Override
 	public float getPlaySpeed(LivingEntityPatch<?> entitypatch) {
+		if (this.getProperty(StaticAnimationProperty.PLAY_SPEED).isPresent()) {
+			return super.getPlaySpeed(entitypatch);
+		}
+		
 		if (entitypatch instanceof PlayerPatch<?>) {
 			Phase phase = this.getPhaseByTime(entitypatch.getAnimator().getPlayerFor(this).getElapsedTime());
 			float speedFactor = this.getProperty(AttackAnimationProperty.ATTACK_SPEED_FACTOR).orElse(1.0F);
 			Optional<Float> property = this.getProperty(AttackAnimationProperty.BASIS_ATTACK_SPEED);
-			float correctedSpeed = property.map((value) -> ((PlayerPatch<?>)entitypatch).getAttackSpeed(phase.hand) / value).orElse(this.totalTime * ((PlayerPatch<?>)entitypatch).getAttackSpeed(phase.hand));
+			float correctedSpeed = property.map((value) -> ((PlayerPatch<?>)entitypatch).getAttackSpeed(phase.hand) / value)
+					.orElse(this.totalTime * ((PlayerPatch<?>)entitypatch).getAttackSpeed(phase.hand));
+			
+			correctedSpeed = Math.round(correctedSpeed * 1000.0F) / 1000.0F;
+			
 			return 1.0F + (correctedSpeed - 1.0F) * speedFactor;
-		} else {
-			return 1.0F;
 		}
+		
+		return 1.0F;
 	}
 	
 	public <V> AttackAnimation addProperty(AttackAnimationProperty<V> propertyType, V value) {
@@ -383,7 +388,7 @@ public class AttackAnimation extends ActionAnimation {
 		for (Phase phase : this.phases) {
 			currentPhase = phase;
 			
-			if (phase.recovery > elapsedTime) {
+			if (phase.end > elapsedTime) {
 				break;
 			}
 		}
@@ -406,24 +411,36 @@ public class AttackAnimation extends ActionAnimation {
 	}
 	
 	public static class Phase {
-		protected final Map<AttackPhaseProperty<?>, Object> properties = new HashMap<AttackPhaseProperty<?>, Object> ();;
+		protected final Map<AttackPhaseProperty<?>, Object> properties = Maps.newHashMap();
+		protected final float start;
 		protected final float antic;
 		protected final float preDelay;
 		protected final float contact;
 		protected final float recovery;
+		protected final float end;
 		protected final String jointName;
 		protected final InteractionHand hand;
 		protected Collider collider;
 		
-		public Phase(float antic, float preDelay, float contact, float recovery, String jointName, Collider collider) {
-			this(antic, preDelay, contact, recovery, InteractionHand.MAIN_HAND, jointName, collider);
+		public Phase(float start, float antic, float contact, float recovery, float end, String jointName, Collider collider) {
+			this(start, antic, contact, recovery, end, InteractionHand.MAIN_HAND, jointName, collider);
 		}
 		
-		public Phase(float antic, float preDelay, float contact, float recovery, InteractionHand hand, String jointName, Collider collider) {
+		public Phase(float start, float antic, float contact, float recovery, float end, InteractionHand hand, String jointName, Collider collider) {
+			this(start, antic, antic, contact, recovery, end, hand, jointName, collider);
+		}
+		
+		public Phase(float start, float antic, float preDelay, float contact, float recovery, float end, String jointName, Collider collider) {
+			this(start, antic, preDelay, contact, recovery, end, InteractionHand.MAIN_HAND, jointName, collider);
+		}
+		
+		public Phase(float start, float antic, float preDelay, float contact, float recovery, float end, InteractionHand hand, String jointName, Collider collider) {
+			this.start = start;
 			this.antic = antic;
 			this.preDelay = preDelay;
 			this.contact = contact;
 			this.recovery = recovery;
+			this.end = end;
 			this.collider = collider;
 			this.jointName = jointName;
 			this.hand = hand;

@@ -41,13 +41,12 @@ import net.minecraftforge.event.entity.living.LivingKnockBackEvent;
 import net.minecraftforge.event.entity.living.PotionEvent.PotionAddedEvent;
 import net.minecraftforge.event.entity.living.PotionEvent.PotionExpiryEvent;
 import net.minecraftforge.event.entity.living.PotionEvent.PotionRemoveEvent;
-import net.minecraftforge.event.entity.living.ShieldBlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import yesman.epicfight.api.animation.types.StaticAnimation;
-import yesman.epicfight.api.utils.game.AttackResult;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource.StunType;
+import yesman.epicfight.api.utils.AttackResult;
+import yesman.epicfight.api.utils.ExtendedDamageSource;
+import yesman.epicfight.api.utils.ExtendedDamageSource.StunType;
 import yesman.epicfight.main.EpicFightMod;
 import yesman.epicfight.network.EpicFightNetworkManager;
 import yesman.epicfight.network.client.CPPlayAnimation;
@@ -275,12 +274,12 @@ public class EntityEvents {
 			return;
 		}
 		
-		LivingEntityPatch<?> entitypatch = (LivingEntityPatch<?>) event.getEntity().getCapability(EpicFightCapabilities.CAPABILITY_ENTITY, null).orElse(null);
+		LivingEntityPatch<?> entitypatch = (LivingEntityPatch<?>) event.getEntity().getCapability(EpicFightCapabilities.CAPABILITY_ENTITY).orElse(null);
 		DamageSource damageSource = null;
 		
 		if (entitypatch != null && event.getEntityLiving().getHealth() > 0.0F) {
 			if (event.getSource() instanceof IndirectEntityDamageSource && event.getSource().getDirectEntity() != null) {
-				ProjectilePatch<?> projectilepatch = event.getSource().getDirectEntity().getCapability(EpicFightCapabilities.CAPABILITY_PROJECTILE, null).orElse(null);
+				ProjectilePatch<?> projectilepatch = event.getSource().getDirectEntity().getCapability(EpicFightCapabilities.CAPABILITY_PROJECTILE).orElse(null);
 				
 				if (projectilepatch != null) {
 					damageSource = projectilepatch.getEpicFightDamageSource(event.getSource());
@@ -297,19 +296,12 @@ public class EntityEvents {
 				event.setCanceled(true);
 			} else if (event.getAmount() != result.damage) {
 				event.setCanceled(true);
-				DamageSource damagesource = event.getSource();
+				
+				DamageSource damagesource = new DamageSource( event.getSource().getMsgId() );
 				damagesource.bypassInvul();
+				
 				event.getEntity().hurt(damagesource, result.damage);
 			}
-		}
-	}
-	
-	@SubscribeEvent
-	public static void shieldBlockEvent(ShieldBlockEvent event) {
-		LivingEntityPatch<?> entitypatch = (LivingEntityPatch<?>)event.getDamageSource().getDirectEntity().getCapability(EpicFightCapabilities.CAPABILITY_ENTITY).orElse(null);
-		
-		if (entitypatch != null) {
-			entitypatch.onBlockedByShield();
 		}
 	}
 	

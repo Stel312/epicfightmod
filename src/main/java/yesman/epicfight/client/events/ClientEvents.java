@@ -107,6 +107,11 @@ public class ClientEvents {
 			
 			if (playerpatch != null && playerpatch.getOriginal().getOffhandItem().getUseAnimation() == UseAnim.NONE) {
 				boolean canceled = playerpatch.getEventListener().triggerEvents(EventType.CLIENT_ITEM_USE_EVENT, new RightClickItemEvent<>(playerpatch));
+				
+				if (playerpatch.getEntityState().movementLocked()) {
+					canceled = true;
+				}
+				
 				event.setCanceled(canceled);
 			}
 		}
@@ -119,7 +124,7 @@ public class ClientEvents {
 		if (oldCap != null) {
 			LocalPlayerPatch newCap = (LocalPlayerPatch)event.getNewPlayer().getCapability(EpicFightCapabilities.CAPABILITY_ENTITY).orElse(null);
 			
-			newCap.onJoinWorld(event);
+			newCap.onRespawnLocalPlayer(event);
 			newCap.copySkillsFrom(oldCap);
 			newCap.toMode(oldCap.getPlayerMode(), false);
 		}

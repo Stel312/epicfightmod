@@ -1,12 +1,13 @@
 package yesman.epicfight.client.events.engine;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiConsumer;
 
 import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWCursorPosCallbackI;
 
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.KeyMapping;
@@ -14,6 +15,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.UseAnim;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.InputEvent.KeyInputEvent;
@@ -30,6 +32,7 @@ import yesman.epicfight.client.gui.screen.SkillEditScreen;
 import yesman.epicfight.client.input.EpicFightKeyMappings;
 import yesman.epicfight.client.world.capabilites.entitypatch.player.LocalPlayerPatch;
 import yesman.epicfight.main.EpicFightMod;
+import yesman.epicfight.network.EpicFightNetworkManager;
 import yesman.epicfight.skill.SkillCategories;
 import yesman.epicfight.skill.SkillCategory;
 import yesman.epicfight.skill.SkillContainer;
@@ -38,22 +41,20 @@ import yesman.epicfight.world.entity.eventlistener.PlayerEventListener.EventType
 
 @OnlyIn(Dist.CLIENT)
 public class ControllEngine {
-	private Map<KeyMapping, BiConsumer<Integer, Integer>> keyFunctionMap;
-	private GLFWCursorPosCallbackI blockRotationCallback = (handle, x, y) -> {
-		Minecraft.getInstance().execute(()->{tracingMouseX = x; tracingMouseY = y;});
-	};
+	private Map<KeyMapping, BiConsumer<KeyMapping, Integer>> keyFunctions;
+	private Set<Object> packets = Sets.newHashSet();
 	private Minecraft minecraft;
 	private LocalPlayer player;
 	private LocalPlayerPatch playerpatch;
 	private KeyBindingMap keyHash;
-	private double tracingMouseX;
-	private double tracingMouseY;
 	private int mouseLeftPressCounter = 0;
 	private int sneakPressCounter = 0;
 	private int reservedKey;
 	private int reserveCounter;
+	private int lastHotbarLockedTime;
 	private boolean sneakPressToggle = false;
 	private boolean mouseLeftPressToggle = false;
+	private boolean hotbarLocked;
 	private boolean lightPress;
 	public Options options;
 	
@@ -61,12 +62,12 @@ public class ControllEngine {
 		Events.controllEngine = this;
 		this.minecraft = Minecraft.getInstance();
 		this.options = this.minecraft.options;
-		this.keyFunctionMap = new HashMap<KeyMapping, BiConsumer<Integer, Integer>>();
-		this.keyFunctionMap.put(this.options.keyAttack, this::attackKeyPressed);
-		this.keyFunctionMap.put(this.options.keySwapOffhand, this::swapHandKeyPressed);
-		this.keyFunctionMap.put(EpicFightKeyMappings.SWITCH_MODE, this::switchModeKeyPressed);
-		this.keyFunctionMap.put(EpicFightKeyMappings.DODGE, this::dodgeKeyPressed);
-		this.keyFunctionMap.put(EpicFightKeyMappings.SPECIAL_SKILL, this::specialSkillKeyPressed);
+		this.keyFunctions = Maps.newHashMap();
+		this.keyFunctions.put(this.options.keyAttack, this::attackKeyPressed);
+		this.keyFunctions.put(this.options.keySwapOffhand, this::swapHandKeyPressed);
+		this.keyFunctions.put(EpicFightKeyMappings.SWITCH_MODE, this::switchModeKeyPressed);
+		this.keyFunctions.put(EpicFightKeyMappings.DODGE, this::dodgeKeyPressed);
+		this.keyFunctions.put(EpicFightKeyMappings.SPECIAL_SKILL, this::specialSkillKeyPressed);
 		
 		try {
 			this.keyHash = (KeyBindingMap) ObfuscationReflectionHelper.findField(KeyMapping.class, "f_90810_").get(null);
@@ -85,6 +86,10 @@ public class ControllEngine {
 		this.playerpatch = playerpatch;
 	}
 	
+	public LocalPlayerPatch getPlayerPatch() {
+		return this.playerpatch;
+	}
+	
 	public boolean canPlayerMove(EntityState playerState) {
 		return !playerState.movementLocked() || this.player.isRidingJumpable();
 	}
@@ -93,61 +98,62 @@ public class ControllEngine {
 		return !playerState.turningLocked() || this.player.isRidingJumpable();
 	}
 	
-	private void attackKeyPressed(int key, int action) {
-		if (action == 1) {
-			if (this.playerpatch.isBattleMode()) {
-				this.setKeyBind(this.options.keyAttack, false);
-				while (this.options.keyAttack.consumeClick()) {
-				}
-				
-				if (this.player.getUseItemRemainingTicks() == 0) {
-					if (!this.mouseLeftPressToggle) {
-						this.mouseLeftPressToggle = true;
-					}
+	private void attackKeyPressed(KeyMapping key, int action) {
+		if (action == 1 && this.playerpatch.isBattleMode()) {
+			this.setKeyBind(key, false);
+			while (key.consumeClick());
+			
+			UseAnim useAnim = this.playerpatch.getHoldingItemCapability(this.playerpatch.getOriginal().getUsedItemHand()).getUseAnimation(this.playerpatch);
+			
+			if (this.player.getUseItemRemainingTicks() == 0 || (useAnim == UseAnim.BLOCK)) {
+				if (!this.mouseLeftPressToggle) {
+					this.mouseLeftPressToggle = true;
 				}
 			}
 		}
 	}
 	
-	private void dodgeKeyPressed(int key, int action) {
-		if (action == 1) {
-			if (key == this.options.keyShift.getKey().getValue()) {
-				if (this.player.getVehicle() == null && this.playerpatch.isBattleMode()) {
+	private void dodgeKeyPressed(KeyMapping key, int action) {
+		if (action == 1 && this.playerpatch.isBattleMode()) {
+			if (key.getKey().getValue() == this.options.keyShift.getKey().getValue()) {
+				if (this.player.getVehicle() == null) {
 					if (!this.sneakPressToggle) {
 						this.sneakPressToggle = true;
 					}
 				}
 			} else {
-				SkillCategory skillCategory = (this.playerpatch.getEntityState() == EntityState.KNOCKDOWN) ? SkillCategories.KNOCKDOWN_WAKEUP : SkillCategories.DODGE;
+				SkillCategory skillCategory = (this.playerpatch.getEntityState().knockDown()) ? SkillCategories.KNOCKDOWN_WAKEUP : SkillCategories.DODGE;
 				SkillContainer skill = this.playerpatch.getSkill(skillCategory);
 				
 				if (skill.canExecute(this.playerpatch) && skill.getSkill().isExecutableState(this.playerpatch)) {
-					skill.sendExecuteRequest(this.playerpatch);
+					skill.sendExecuteRequest(this.playerpatch, this.packets);
 				}
 			}
 		}
 	}
 	
-	private void swapHandKeyPressed(int key, int action) {
+	private void swapHandKeyPressed(KeyMapping key, int action) {
 		if (this.playerpatch.getEntityState().inaction() || (!this.playerpatch.getHoldingItemCapability(InteractionHand.MAIN_HAND).canBePlacedOffhand())) {
-			while (this.options.keySwapOffhand.consumeClick()) {}
-			this.setKeyBind(this.options.keySwapOffhand, false);
+			while (key.consumeClick()) {}
+			this.setKeyBind(key, false);
 		}
 	}
 	
-	private void switchModeKeyPressed(int key, int action) {
+	private void switchModeKeyPressed(KeyMapping key, int action) {
 		if (action == 1) {
 			this.playerpatch.toggleMode();
 		}
 	}
 	
-	private void specialSkillKeyPressed(int key, int action) {
-		if (action == 1) {
-			if (key != 0) {
-				if (!this.playerpatch.getSkill(SkillCategories.WEAPON_SPECIAL_ATTACK).sendExecuteRequest(this.playerpatch)) {
+	private void specialSkillKeyPressed(KeyMapping key, int action) {
+		if (action == 1 && this.playerpatch.isBattleMode()) {
+			if (key.getKey().getValue() != 0) {
+				if (!this.playerpatch.getSkill(SkillCategories.WEAPON_SPECIAL_ATTACK).sendExecuteRequest(this.playerpatch, this.packets)) {
 					if (!this.player.isSpectator()) {
 						this.reserveKey(SkillCategories.WEAPON_SPECIAL_ATTACK);
 					}
+				} else {
+					this.lockHotkeys();
 				}
 			} else {
 				if (this.options.keyAttack.equals(EpicFightKeyMappings.SPECIAL_SKILL)) {
@@ -162,7 +168,9 @@ public class ControllEngine {
 			return;
 		}
 		
-		this.playerpatch.updateEntityState();
+		if (this.player.tickCount - this.lastHotbarLockedTime > 20 && this.hotbarLocked) {
+			this.unlockHotkeys();
+		}
 		
 		if (this.mouseLeftPressToggle) {
 			if (!this.isKeyDown(this.options.keyAttack)) {
@@ -172,11 +180,14 @@ public class ControllEngine {
 			} else {
 				if (EpicFightKeyMappings.SPECIAL_SKILL.getKey().equals(this.options.keyAttack.getKey())) {
 					if (this.mouseLeftPressCounter > EpicFightMod.CLIENT_INGAME_CONFIG.longPressCount.getValue()) {
-						if (!this.playerpatch.getSkill(SkillCategories.WEAPON_SPECIAL_ATTACK).sendExecuteRequest(this.playerpatch)) {
+						if (!this.playerpatch.getSkill(SkillCategories.WEAPON_SPECIAL_ATTACK).sendExecuteRequest(this.playerpatch, this.packets)) {
 							if (!this.player.isSpectator()) {
 								this.reserveKey(SkillCategories.WEAPON_SPECIAL_ATTACK);
 							}
+						} else {
+							this.lockHotkeys();
 						}
+						
 						this.mouseLeftPressToggle = false;
 						this.mouseLeftPressCounter = 0;
 					} else {
@@ -188,12 +199,14 @@ public class ControllEngine {
 		}
 		
 		if (this.lightPress) {
-			SkillCategory slot = (!this.player.isOnGround() && !this.player.isInWater() && this.player.getDeltaMovement().y > -0.05D) ? SkillCategories.AIR_ATTACK : SkillCategories.BASIC_ATTACK;
+			SkillCategory slot = (!this.player.isOnGround() && !this.player.isInWater() && this.player.getDeltaMovement().y > -0.05D)
+					? SkillCategories.AIR_ATTACK : SkillCategories.BASIC_ATTACK;
 			
-			if (this.playerpatch.getSkill(slot).sendExecuteRequest(this.playerpatch)) {
+			if (this.playerpatch.getSkill(slot).sendExecuteRequest(this.playerpatch, this.packets)) {
 				this.player.resetAttackStrengthTicker();
 				this.lightPress = false;
 				this.resetReservedKey();
+				this.lockHotkeys();
 			} else {
 				if (!(this.player.isSpectator() || slot == SkillCategories.AIR_ATTACK)) {
 					this.reserveKey(slot);
@@ -207,10 +220,10 @@ public class ControllEngine {
 		
 		if (this.sneakPressToggle) {
 			if (!this.isKeyDown(this.options.keyShift)) {
-				SkillCategory skillCategory = (this.playerpatch.getEntityState() == EntityState.KNOCKDOWN) ? SkillCategories.KNOCKDOWN_WAKEUP : SkillCategories.DODGE;
+				SkillCategory skillCategory = (this.playerpatch.getEntityState().knockDown()) ? SkillCategories.KNOCKDOWN_WAKEUP : SkillCategories.DODGE;
 				SkillContainer skill = this.playerpatch.getSkill(skillCategory);
 				
-				if (!skill.sendExecuteRequest(this.playerpatch)) {
+				if (!skill.sendExecuteRequest(this.playerpatch, this.packets)) {
 					this.reserveKey(SkillCategories.DODGE);
 				}
 				
@@ -230,19 +243,22 @@ public class ControllEngine {
 			if (this.reserveCounter > 0) {
 				SkillContainer skill = this.playerpatch.getSkill(this.reservedKey);
 				this.reserveCounter--;
-				if (skill.getSkill() != null && skill.sendExecuteRequest(this.playerpatch)) {
-					this.resetReservedKey();
+				
+				if (skill.getSkill() != null) {
+					if (skill.sendExecuteRequest(this.playerpatch, this.packets)) {
+						this.resetReservedKey();
+					} else {
+						this.lockHotkeys();
+					}
 				}
 			} else {
 				this.resetReservedKey();
 			}
 		}
 		
-		for (int i = 0; i < 9; ++i) {
-			if (isKeyDown(this.options.keyHotbarSlots[i])) {
-				if (this.playerpatch.getEntityState().inaction()) {
-					this.options.keyHotbarSlots[i].consumeClick();
-				}
+		if (this.playerpatch.getEntityState().inaction() || this.hotbarLocked) {
+			for (int i = 0; i < 9; ++i) {
+				while (this.options.keyHotbarSlots[i].consumeClick());
 			}
 		}
 		
@@ -281,6 +297,19 @@ public class ControllEngine {
 		KeyMapping.set(key.getKey(), setter);
 	}
 	
+	public void lockHotkeys() {
+		this.hotbarLocked = true;
+		this.lastHotbarLockedTime = this.player.tickCount;
+		
+		for (int i = 0; i < 9; ++i) {
+			while (this.options.keyHotbarSlots[i].consumeClick());
+		}
+	}
+	
+	public void unlockHotkeys() {
+		this.hotbarLocked = false;
+	}
+	
 	@OnlyIn(Dist.CLIENT)
 	@Mod.EventBusSubscriber(modid = EpicFightMod.MODID, value = Dist.CLIENT)
 	public static class Events {
@@ -290,9 +319,10 @@ public class ControllEngine {
 		public static void mouseEvent(MouseInputEvent event) {
 			if (controllEngine.minecraft.player != null && Minecraft.getInstance().screen == null) {
 				InputConstants.Key input = InputConstants.Type.MOUSE.getOrCreate(event.getButton());
+				
 				for (KeyMapping keybinding : controllEngine.keyHash.lookupAll(input)) {
-					if (controllEngine.keyFunctionMap.containsKey(keybinding)) {
-						controllEngine.keyFunctionMap.get(keybinding).accept(event.getButton(), event.getAction());
+					if (controllEngine.keyFunctions.containsKey(keybinding)) {
+						controllEngine.keyFunctions.get(keybinding).accept(keybinding, event.getAction());
 					}
 				}
 			}
@@ -311,9 +341,10 @@ public class ControllEngine {
 		public static void keyboardEvent(KeyInputEvent event) {
 			if (controllEngine.minecraft.player != null && Minecraft.getInstance().screen == null) {
 				InputConstants.Key input = InputConstants.Type.KEYSYM.getOrCreate(event.getKey());
+				
 				for (KeyMapping keybinding : controllEngine.keyHash.lookupAll(input)) {
-					if (controllEngine.keyFunctionMap.containsKey(keybinding)) {
-						controllEngine.keyFunctionMap.get(keybinding).accept(event.getKey(), event.getAction());
+					if (controllEngine.keyFunctions.containsKey(keybinding)) {
+						controllEngine.keyFunctions.get(keybinding).accept(keybinding, event.getAction());
 					}
 				}
 			}
@@ -325,23 +356,7 @@ public class ControllEngine {
 				return;
 			}
 			
-			Minecraft minecraft = Minecraft.getInstance();
 			EntityState playerState = controllEngine.playerpatch.getEntityState();
-			
-			if (!controllEngine.canPlayerRotate(playerState) && controllEngine.player.isAlive()) {
-				GLFW.glfwSetCursorPosCallback(minecraft.getWindow().getWindow(), controllEngine.blockRotationCallback);
-				minecraft.mouseHandler.xpos = controllEngine.tracingMouseX;
-				minecraft.mouseHandler.ypos = controllEngine.tracingMouseY;
-			} else {
-				controllEngine.tracingMouseX = minecraft.mouseHandler.xpos();
-				controllEngine.tracingMouseY = minecraft.mouseHandler.ypos();
-				
-				GLFW.glfwSetCursorPosCallback(minecraft.getWindow().getWindow(), (handle, x, y) -> {
-					minecraft.execute(() -> {
-						minecraft.mouseHandler.onMove(handle, x, y);
-					});
-				});
-			}
 			
 			if (!controllEngine.canPlayerMove(playerState)) {
 				event.getInput().forwardImpulse = 0F;
@@ -352,7 +367,9 @@ public class ControllEngine {
 				event.getInput().right = false;
 				event.getInput().jumping = false;
 				event.getInput().shiftKeyDown = false;
+				
 				LocalPlayer clientPlayer = ((LocalPlayer)event.getPlayer());
+				
 				clientPlayer.setSprinting(false);
 				clientPlayer.sprintTriggerTime = -1;
 				controllEngine.setKeyBind(controllEngine.options.keySprint, false);
@@ -369,6 +386,12 @@ public class ControllEngine {
 				if (controllEngine.minecraft.player != null) {
 					controllEngine.tick();
 				}
+			} else {
+				for (Object packet : controllEngine.packets) {
+					EpicFightNetworkManager.sendToServer(packet);
+				}
+				
+				controllEngine.packets.clear();
 			}
 		}
 	}

@@ -1,5 +1,7 @@
 package yesman.epicfight.client.world.capabilites.entitypatch.player;
 
+import java.util.UUID;
+
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -19,7 +21,7 @@ import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.entity.living.LivingEvent.LivingUpdateEvent;
 import yesman.epicfight.api.animation.LivingMotions;
 import yesman.epicfight.api.animation.types.StaticAnimation;
-import yesman.epicfight.api.utils.game.AttackResult;
+import yesman.epicfight.api.utils.AttackResult;
 import yesman.epicfight.client.ClientEngine;
 import yesman.epicfight.client.gui.screen.SkillBookScreen;
 import yesman.epicfight.main.EpicFightMod;
@@ -28,9 +30,11 @@ import yesman.epicfight.network.client.CPPlayAnimation;
 import yesman.epicfight.network.client.CPSetPlayerTarget;
 import yesman.epicfight.network.client.CPChangePlayerMode;
 import yesman.epicfight.world.capabilities.item.CapabilityItem;
+import yesman.epicfight.world.entity.eventlistener.PlayerEventListener.EventType;
 
 @OnlyIn(Dist.CLIENT)
 public class LocalPlayerPatch extends AbstractClientPlayerPatch<LocalPlayer> {
+	private static final UUID ACTION_EVENT_UUID = UUID.fromString("d1a1e102-1621-11ed-861d-0242ac120002");
 	private Minecraft minecraft;
 	private LivingEntity rayTarget;
 	private float prevStamina;
@@ -39,16 +43,25 @@ public class LocalPlayerPatch extends AbstractClientPlayerPatch<LocalPlayer> {
 	public void onConstructed(LocalPlayer entity) {
 		super.onConstructed(entity);
 		this.minecraft = Minecraft.getInstance();
-		ClientEngine.instance.inputController.setPlayerPatch(this);
+		ClientEngine.instance.controllEngine.setPlayerPatch(this);
 	}
 	
-	public void onJoinWorld(ClientPlayerNetworkEvent.RespawnEvent event) {
-		super.onJoinWorld(event.getNewPlayer(), new EntityJoinWorldEvent(event.getNewPlayer(), event.getNewPlayer().level));
+	@Override
+	public void onJoinWorld(LocalPlayer entityIn, EntityJoinWorldEvent event) {
+		super.onJoinWorld(entityIn, event);
+		this.eventListeners.addEventListener(EventType.ACTION_EVENT_CLIENT, ACTION_EVENT_UUID, (playerEvent) -> {
+			ClientEngine.instance.controllEngine.unlockHotkeys();
+		});
+	}
+	
+	public void onRespawnLocalPlayer(ClientPlayerNetworkEvent.RespawnEvent event) {
+		this.onJoinWorld(event.getNewPlayer(), new EntityJoinWorldEvent(event.getNewPlayer(), event.getNewPlayer().level));
 	}
 	
 	@Override
 	public void updateMotion(boolean considerInaction) {
 		super.updateMotion(considerInaction);
+		
 		if (!this.getClientAnimator().isAiming()) {
 			if (this.currentCompositeMotion == LivingMotions.AIM) {
 				this.original.getUseItemRemainingTicks();
@@ -178,7 +191,7 @@ public class LocalPlayerPatch extends AbstractClientPlayerPatch<LocalPlayer> {
 	
 	@Override
 	public boolean shouldBlockMoving() {
-		return ClientEngine.instance.inputController.isKeyDown(this.minecraft.options.keyDown);
+		return ClientEngine.instance.controllEngine.isKeyDown(this.minecraft.options.keyDown);
 	}
 	
 	public float getPrevStamina() {

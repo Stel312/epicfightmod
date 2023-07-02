@@ -29,9 +29,9 @@ import yesman.epicfight.api.animation.types.AttackAnimation;
 import yesman.epicfight.api.animation.types.StaticAnimation;
 import yesman.epicfight.api.client.animation.ClientAnimator;
 import yesman.epicfight.api.model.Model;
-import yesman.epicfight.api.utils.game.AttackResult;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource.StunType;
+import yesman.epicfight.api.utils.AttackResult;
+import yesman.epicfight.api.utils.ExtendedDamageSource;
+import yesman.epicfight.api.utils.ExtendedDamageSource.StunType;
 import yesman.epicfight.api.utils.math.Vec3f;
 import yesman.epicfight.gameasset.Animations;
 import yesman.epicfight.gameasset.MobCombatBehaviors;
@@ -166,7 +166,7 @@ public class EndermanPatch extends MobPatch<EnderMan> {
 				}
 				
 				if (extDamageSource == null || extDamageSource.getStunType() != StunType.HOLD) {
-					int percentage = this.getServerAnimator().getPlayerFor(null).getPlay() instanceof AttackAnimation ? 10 : 3;
+					int percentage = this.getServerAnimator().getPlayerFor(null).getAnimation() instanceof AttackAnimation ? 10 : 3;
 					if (this.original.getRandom().nextInt(percentage) == 0) {
 						for (int i = 0; i < 9; i++) {
 							if (this.original.teleport()) {

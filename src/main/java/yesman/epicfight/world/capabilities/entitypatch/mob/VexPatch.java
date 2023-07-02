@@ -14,7 +14,7 @@ import yesman.epicfight.api.animation.LivingMotions;
 import yesman.epicfight.api.animation.types.StaticAnimation;
 import yesman.epicfight.api.client.animation.ClientAnimator;
 import yesman.epicfight.api.model.Model;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource.StunType;
+import yesman.epicfight.api.utils.ExtendedDamageSource.StunType;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.gameasset.Animations;
 import yesman.epicfight.gameasset.Models;
@@ -67,15 +67,13 @@ public class VexPatch extends MobPatch<Vex> {
 	
 	@Override
 	public void updateMotion(boolean considerInaction) {
-		if (this.state.inaction() && considerInaction) {
-			currentLivingMotion = LivingMotions.INACTION;
+		if (this.original.getHealth() <= 0.0F) {
+			currentLivingMotion = LivingMotions.DEATH;
+		} else if (this.state.inaction() && considerInaction) {
+			currentLivingMotion = LivingMotions.IDLE;
 		} else {
-			if (this.original.getHealth() <= 0.0F) {
-				currentLivingMotion = LivingMotions.DEATH;
-			} else {
-				currentLivingMotion = LivingMotions.IDLE;
-				currentCompositeMotion = LivingMotions.IDLE;
-			}
+			currentLivingMotion = LivingMotions.IDLE;
+			currentCompositeMotion = LivingMotions.IDLE;
 		}
 	}
 	

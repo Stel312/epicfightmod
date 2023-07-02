@@ -24,6 +24,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.network.chat.TranslatableComponent;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -49,7 +50,7 @@ import net.minecraftforge.client.event.EntityViewRenderEvent.CameraSetup;
 import net.minecraftforge.client.event.EntityViewRenderEvent.RenderFogEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderHandEvent;
-import net.minecraftforge.client.event.RenderLevelLastEvent;
+import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.event.entity.player.ItemTooltipEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -123,6 +124,11 @@ public class RenderEngine {
 	private int zoomOutTimer = 0;
 	private int zoomCount;
 	private int zoomMaxCount = 20;
+	private float cameraXRot;
+	private float cameraYRot;
+	private float cameraXRotO;
+	private float cameraYRotO;
+	private boolean isPlayerRotationLocked;
 	
 	public RenderEngine() {
 		Events.renderEngine = this;
@@ -264,7 +270,7 @@ public class RenderEngine {
 		this.zoomOutTimer = timer;
 	}
 	
-	private void updateCameraInfo(CameraSetup event, CameraType pov, double partialTicks) {
+	private void setRangedWeaponThirdPerson(CameraSetup event, CameraType pov, double partialTicks) {
 		if (ClientEngine.instance.getPlayerPatch() == null) {
 			return;
 		}
@@ -276,7 +282,7 @@ public class RenderEngine {
 		double totalY = vector.y();
 		double totalZ = vector.z();
 		
-		if (pov == CameraType.THIRD_PERSON_BACK && zoomCount > 0) {
+		if (pov == CameraType.THIRD_PERSON_BACK) {
 			double posX = vector.x();
 			double posY = vector.y();
 			double posZ = vector.z();
@@ -317,6 +323,70 @@ public class RenderEngine {
 		}
 		
 		camera.setPosition(totalX, totalY, totalZ);
+	}
+	
+	public void setCameraRotation(float x, float y) {
+		float f = (float)x * 0.15F;
+		float f1 = (float)y * 0.15F;
+		
+		if (!this.isPlayerRotationLocked) {
+			this.cameraXRot = this.minecraft.player.getXRot();
+			this.cameraYRot = this.minecraft.player.getYRot();
+			this.cameraXRotO = this.minecraft.player.xRotO;
+			this.cameraYRotO = this.minecraft.player.yRotO;
+		}
+		
+		this.cameraXRot += f;
+		this.cameraYRot += f1;
+		this.cameraXRot = Mth.clamp(this.cameraXRot, -90.0F, 90.0F);
+		
+		this.cameraXRotO += f;
+		this.cameraYRotO += f1;
+		this.cameraXRotO = Mth.clamp(this.cameraXRotO, -90.0F, 90.0F);
+		
+		this.isPlayerRotationLocked = true;
+	}
+	
+	public boolean isPlayerRotationLocked() {
+		return this.isPlayerRotationLocked;
+	}
+	
+	public void unlockRotation(Entity cameraEntity) {
+		if (this.isPlayerRotationLocked) {
+			cameraEntity.setXRot(this.cameraXRot);
+			cameraEntity.setYRot(this.cameraYRot);
+		}
+		
+		this.isPlayerRotationLocked = false;
+	}
+	
+	public void correctCamera(CameraSetup event, float partialTicks) {
+		if (this.isPlayerRotationLocked) {
+			Camera camera = event.getCamera();
+			CameraType cameraType = this.minecraft.options.getCameraType();
+			
+			float xRot = this.cameraXRotO + (this.cameraXRot - this.cameraXRotO) * partialTicks;
+			float yRot = this.cameraYRotO + (this.cameraYRot - this.cameraYRotO) * partialTicks;
+
+			if (cameraType.isMirrored()) {
+				yRot += 180.0F;
+				xRot *= -1.0F;
+			}
+
+			camera.setRotation(yRot, xRot);
+			event.setPitch(xRot);
+			event.setYaw(yRot);
+			
+			if (!cameraType.isFirstPerson()) {
+				Entity cameraEntity = this.minecraft.cameraEntity;
+				
+				camera.setPosition(Mth.lerp((double)partialTicks, cameraEntity.xo, cameraEntity.getX()),
+									Mth.lerp((double)partialTicks, cameraEntity.yo, cameraEntity.getY()) + Mth.lerp(partialTicks, camera.eyeHeightOld, camera.eyeHeight),
+									Mth.lerp((double)partialTicks, cameraEntity.zo, cameraEntity.getZ()));
+				
+				camera.move(-camera.getMaxZoom(4.0D), 0.0D, 0.0D);
+			}
+		}
 	}
 	
 	public OverlayManager getOverlayManager() {
@@ -372,7 +442,7 @@ public class RenderEngine {
 				LocalPlayerPatch playerpatch = (LocalPlayerPatch) event.getPlayer().getCapability(EpicFightCapabilities.CAPABILITY_ENTITY, null).orElse(null);
 				
 				if (cap != null && playerpatch != null) {
-					if (ClientEngine.instance.inputController.isKeyDown(EpicFightKeyMappings.SPECIAL_SKILL_TOOLTIP)) {
+					if (ClientEngine.instance.controllEngine.isKeyDown(EpicFightKeyMappings.SPECIAL_SKILL_TOOLTIP)) {
 						if (cap.getSpecialAttack(playerpatch) != null) {
 							event.getToolTip().clear();
 							List<Component> skilltooltip = cap.getSpecialAttack(playerpatch).getTooltipOnItem(event.getItemStack(), cap, playerpatch);
@@ -411,7 +481,7 @@ public class RenderEngine {
 											}
 											
 											tooltip.remove(i);
-											tooltip.add(i, new TextComponent(String.format(" %.2f ", playerpatch.getAttackSpeed(cap, weaponSpeed))).append(new TranslatableComponent(Attributes.ATTACK_SPEED.getDescriptionId())));
+											tooltip.add(i, new TextComponent(String.format(" %.2f ", playerpatch.getModifiedAttackSpeed(cap, weaponSpeed))).append(new TranslatableComponent(Attributes.ATTACK_SPEED.getDescriptionId())));
 										} else if (((TranslatableComponent)translationComponent.getArgs()[1]).getKey().equals(Attributes.ATTACK_DAMAGE.getDescriptionId())) {
 											float weaponDamage = (float)playerpatch.getOriginal().getAttribute(Attributes.ATTACK_DAMAGE).getBaseValue();
 											weaponDamage += EnchantmentHelper.getDamageBonus(event.getItemStack(), MobType.UNDEFINED);
@@ -428,7 +498,7 @@ public class RenderEngine {
 											}
 											
 											tooltip.remove(i);
-											tooltip.add(i, new TextComponent(String.format(" %.0f ", playerpatch.getDamageToEntity(null, null, weaponDamage))).append(new TranslatableComponent(Attributes.ATTACK_DAMAGE.getDescriptionId())).withStyle(ChatFormatting.DARK_GREEN));
+											tooltip.add(i, new TextComponent(String.format(" %.0f ", playerpatch.getModifiedDamage(null, null, weaponDamage))).append(new TranslatableComponent(Attributes.ATTACK_DAMAGE.getDescriptionId())).withStyle(ChatFormatting.DARK_GREEN));
 										}
 									}
 								}
@@ -441,9 +511,9 @@ public class RenderEngine {
 		
 		@SubscribeEvent
 		public static void cameraSetupEvent(CameraSetup event) {
-			renderEngine.updateCameraInfo(event, renderEngine.minecraft.options.getCameraType(), event.getPartialTicks());
-			
 			if (renderEngine.zoomCount > 0) {
+				renderEngine.setRangedWeaponThirdPerson(event, renderEngine.minecraft.options.getCameraType(), event.getPartialTicks());
+				
 				if (renderEngine.zoomOutTimer > 0) {
 					renderEngine.zoomOutTimer--;
 				} else {
@@ -452,6 +522,8 @@ public class RenderEngine {
 				
 				renderEngine.zoomCount = Math.min(renderEngine.zoomMaxCount, renderEngine.zoomCount);
 			}
+			
+			renderEngine.correctCamera(event, (float)event.getPartialTicks());
 		}
 		
 		@SubscribeEvent
@@ -520,9 +592,12 @@ public class RenderEngine {
 			}
 		}
 		
+		
+		
 		@SubscribeEvent
-		public static void renderWorldLast(RenderLevelLastEvent event) {
-			if (renderEngine.zoomCount > 0 && renderEngine.minecraft.options.getCameraType() == CameraType.THIRD_PERSON_BACK) {
+		public static void renderWorldLast(RenderLevelStageEvent event) {
+			if (renderEngine.zoomCount > 0 && renderEngine.minecraft.options.getCameraType() == CameraType.THIRD_PERSON_BACK
+					&& event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
 				renderEngine.aimHelper.doRender(event.getPoseStack(), event.getPartialTick());
 			}
 		}

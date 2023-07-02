@@ -54,6 +54,11 @@ public class PlayerEvents {
 			
 			if (playerpatch != null && (playerpatch.getOriginal().getOffhandItem().getUseAnimation() == UseAnim.NONE || !playerpatch.getHoldingItemCapability(InteractionHand.MAIN_HAND).getStyle(playerpatch).canUseOffhand())) {
 				boolean canceled = playerpatch.getEventListener().triggerEvents(EventType.SERVER_ITEM_USE_EVENT, new RightClickItemEvent<>(playerpatch));
+				
+				if (playerpatch.getEntityState().movementLocked()) {
+					canceled = true;
+				}
+				
 				event.setCanceled(canceled);
 			}
 		}
@@ -63,7 +68,7 @@ public class PlayerEvents {
 	public static void itemUseStartEvent(LivingEntityUseItemEvent.Start event) {
 		if (event.getEntity() instanceof Player) {
 			Player player = (Player) event.getEntity();
-			PlayerPatch<?> playerpatch = (PlayerPatch<?>) event.getEntity().getCapability(EpicFightCapabilities.CAPABILITY_ENTITY, null).orElse(null);
+			PlayerPatch<?> playerpatch = (PlayerPatch<?>) event.getEntity().getCapability(EpicFightCapabilities.CAPABILITY_ENTITY).orElse(null);
 			InteractionHand hand = player.getItemInHand(InteractionHand.MAIN_HAND).equals(event.getItem()) ? InteractionHand.MAIN_HAND : InteractionHand.OFF_HAND;
 			CapabilityItem itemCap = playerpatch.getHoldingItemCapability(hand);
 			
@@ -74,7 +79,7 @@ public class PlayerEvents {
 			}
 			
 			if (itemCap.getUseAnimation(playerpatch) == UseAnim.BLOCK) {
-				event.setDuration(1000000);
+				event.setDuration(Integer.MAX_VALUE);
 			}
 		}
 	}

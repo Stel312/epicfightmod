@@ -46,8 +46,8 @@ public class ClientAnimator extends Animator {
 		this.currentMotion = LivingMotions.IDLE;
 		this.currentCompositeMotion = LivingMotions.IDLE;
 		this.compositeLivingAnimations = Maps.newHashMap();
-		this.defaultLivingAnimations = Maps.<LivingMotion, StaticAnimation>newHashMap();
-		this.defaultCompositeLivingAnimations = Maps.<LivingMotion, StaticAnimation>newHashMap();
+		this.defaultLivingAnimations = Maps.newHashMap();
+		this.defaultCompositeLivingAnimations = Maps.newHashMap();
 		this.baseLayer = new Layer.BaseLayer(null);
 	}
 	
@@ -154,15 +154,15 @@ public class ClientAnimator extends Animator {
 	}
 	
 	@Override
-	public void updatePose() {
+	public void poseTick() {
 		this.prevPose = this.currentPose;
 		this.currentPose = this.getComposedLayerPose(1.0F);
 	}
 	
 	@Override
-	public void update() {
+	public void tick() {
 		this.baseLayer.update(this.entitypatch);
-		this.updatePose();
+		this.poseTick();
 		
 		if (this.baseLayer.animationPlayer.isEnd() && this.baseLayer.nextAnimation == null && this.currentMotion != LivingMotions.DEATH) {
 			this.entitypatch.updateMotion(false);
@@ -189,7 +189,7 @@ public class ClientAnimator extends Animator {
 	
 	@Override
 	public void playDeathAnimation() {
-		this.playAnimation(this.livingAnimations.get(LivingMotions.DEATH), 0);
+		this.playAnimation(this.livingAnimations.get(LivingMotions.DEATH), 0.0F);
 		this.currentMotion = LivingMotions.DEATH;
 	}
 	
@@ -205,7 +205,7 @@ public class ClientAnimator extends Animator {
 		Pose composedPose = new Pose();
 		Pose currentBasePose = this.baseLayer.animationPlayer.getCurrentPose(this.entitypatch, partialTicks);;
 		Map<Layer.Priority, Pair<DynamicAnimation, Pose>> layerPoses = Maps.newLinkedHashMap();
-		layerPoses.put(Layer.Priority.LOWEST, Pair.of(this.baseLayer.animationPlayer.getPlay(), currentBasePose));
+		layerPoses.put(Layer.Priority.LOWEST, Pair.of(this.baseLayer.animationPlayer.getAnimation(), currentBasePose));
 		
 		for (Map.Entry<String, JointTransform> transformEntry : currentBasePose.getJointTransformData().entrySet()) {
 			composedPose.putJointData(transformEntry.getKey(), transformEntry.getValue());
@@ -216,7 +216,7 @@ public class ClientAnimator extends Animator {
 			
 			if (!compositeLayer.isDisabled()) {
 				Pose layerPose = compositeLayer.animationPlayer.getCurrentPose(this.entitypatch, compositeLayer.paused ? 1.0F : partialTicks);
-				layerPoses.put(priority, Pair.of(compositeLayer.animationPlayer.getPlay(), layerPose));
+				layerPoses.put(priority, Pair.of(compositeLayer.animationPlayer.getAnimation(), layerPose));
 				
 				for (Map.Entry<String, JointTransform> transformEntry : layerPose.getJointTransformData().entrySet()) {
 					composedPose.getJointTransformData().put(transformEntry.getKey(), transformEntry.getValue());
@@ -239,7 +239,7 @@ public class ClientAnimator extends Animator {
 			
 			if (!compositeLayer.isDisabled()) {
 				Pose layerPose = compositeLayer.animationPlayer.getCurrentPose(this.entitypatch, compositeLayer.paused ? 1.0F : partialTicks);
-				layerPoses.put(priority, Pair.of(compositeLayer.animationPlayer.getPlay(), layerPose));
+				layerPoses.put(priority, Pair.of(compositeLayer.animationPlayer.getAnimation(), layerPose));
 				
 				for (Map.Entry<String, JointTransform> transformEntry : layerPose.getJointTransformData().entrySet()) {
 					composedPose.getJointTransformData().put(transformEntry.getKey(), transformEntry.getValue());
@@ -277,7 +277,7 @@ public class ClientAnimator extends Animator {
 	}
 	
 	public boolean compareMotion(LivingMotion motion) {
-		boolean flag = this.currentMotion == motion || (this.currentMotion == LivingMotions.INACTION && motion == LivingMotions.IDLE);
+		boolean flag = this.currentMotion == motion;
 		
 		if (flag) {
 			this.currentMotion = motion;
@@ -290,9 +290,9 @@ public class ClientAnimator extends Animator {
 		return this.currentCompositeMotion == motion;
 	}
 	
-	public void startInaction() {
-		this.currentMotion = LivingMotions.INACTION;
-		this.entitypatch.currentLivingMotion = LivingMotions.INACTION;
+	public void resetMotion() { 
+		this.currentMotion = LivingMotions.IDLE;
+		this.entitypatch.currentLivingMotion = LivingMotions.IDLE;
 	}
 	
 	public void resetCompositeMotion() {
@@ -315,7 +315,7 @@ public class ClientAnimator extends Animator {
 	@Override
 	public AnimationPlayer getPlayerFor(DynamicAnimation playingAnimation) {
 		for (Layer layer : this.baseLayer.compositeLayers.values()) {
-			if (layer.animationPlayer.getPlay().equals(playingAnimation)) {
+			if (layer.animationPlayer.getAnimation().equals(playingAnimation)) {
 				return layer.animationPlayer;
 			}
 		}
@@ -329,6 +329,6 @@ public class ClientAnimator extends Animator {
 	
 	@Override
 	public EntityState getEntityState() {
-		return this.baseLayer.animationPlayer.getPlay().getState(this.baseLayer.animationPlayer.getElapsedTime());
+		return this.baseLayer.animationPlayer.getAnimation().getState(this.baseLayer.animationPlayer.getElapsedTime());
 	}
 }

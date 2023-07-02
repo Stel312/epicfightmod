@@ -27,6 +27,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.entity.living.LivingDropsEvent;
 import net.minecraftforge.event.entity.living.LivingEvent.LivingUpdateEvent;
@@ -39,9 +40,9 @@ import yesman.epicfight.api.animation.types.StaticAnimation;
 import yesman.epicfight.api.client.animation.ClientAnimator;
 import yesman.epicfight.api.collider.Collider;
 import yesman.epicfight.api.model.Model;
-import yesman.epicfight.api.utils.game.AttackResult;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource.StunType;
+import yesman.epicfight.api.utils.AttackResult;
+import yesman.epicfight.api.utils.ExtendedDamageSource;
+import yesman.epicfight.api.utils.ExtendedDamageSource.StunType;
 import yesman.epicfight.api.utils.math.MathUtils;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.gameasset.Models;
@@ -60,7 +61,7 @@ public abstract class LivingEntityPatch<T extends LivingEntity> extends EntityPa
 	public static final EntityDataAccessor<Float> MAX_STUN_SHIELD = new EntityDataAccessor<Float> (252, EntityDataSerializers.FLOAT);
 	
 	private float stunTimeReduction;
-	protected EntityState state = EntityState.FREE;
+	protected EntityState state = EntityState.DEFAULT;
 	protected Animator animator;
 	public LivingMotion currentLivingMotion = LivingMotions.IDLE;
 	public LivingMotion currentCompositeMotion = LivingMotions.IDLE;
@@ -98,24 +99,20 @@ public abstract class LivingEntityPatch<T extends LivingEntity> extends EntityPa
 	
 	@Override
 	protected void clientTick(LivingUpdateEvent event) {
-		ClientAnimator animator = this.getClientAnimator();
-		this.updateMotion(true);
-		animator.update();
 	}
 	
 	@Override
 	protected void serverTick(LivingUpdateEvent event) {
 		if (this.stunTimeReduction > 0.0F) {
 			float stunArmor = this.getStunArmor();
-			this.stunTimeReduction = Math.max(0.0F, this.stunTimeReduction - 0.03F * (1 - stunArmor / (7.5F + stunArmor)));
+			this.stunTimeReduction -= 0.05F * (1.1F - this.stunTimeReduction * this.stunTimeReduction) * (1.0F - stunArmor / (7.5F + stunArmor));
+			this.stunTimeReduction = Math.max(0.0F, this.stunTimeReduction);
 		}
-		
-		this.animator.update();
 	}
 	
 	@Override
 	public void tick(LivingUpdateEvent event) {
-		this.updateEntityState();
+		this.animator.tick();
 		
 		if (this.isLogicalClient()) {
 			this.clientTick(event);
@@ -130,6 +127,7 @@ public abstract class LivingEntityPatch<T extends LivingEntity> extends EntityPa
 	
 	public void onDeath() {
 		this.getAnimator().playDeathAnimation();
+		this.currentLivingMotion = LivingMotions.DEATH;
 	}
 	
 	public void updateEntityState() {
@@ -138,13 +136,16 @@ public abstract class LivingEntityPatch<T extends LivingEntity> extends EntityPa
 	
 	public void cancelUsingItem() {
 		this.original.stopUsingItem();
-		net.minecraftforge.event.ForgeEventFactory.onUseItemStop(this.original, this.original.getUseItem(), this.original.getUseItemRemainingTicks());
+		ForgeEventFactory.onUseItemStop(this.original, this.original.getUseItem(), this.original.getUseItemRemainingTicks());
 	}
 	
 	public CapabilityItem getHoldingItemCapability(InteractionHand hand) {
 		return EpicFightCapabilities.getItemStackCapability(this.original.getItemInHand(hand));
 	}
 	
+	/**
+	 * Returns an empty capability if the item in mainhand is incompatible with the item in offhand 
+	 */
 	public CapabilityItem getAdvancedHoldingItemCapability(InteractionHand hand) {
 		if (hand == InteractionHand.MAIN_HAND) {
 			return getHoldingItemCapability(hand);
@@ -157,7 +158,7 @@ public abstract class LivingEntityPatch<T extends LivingEntity> extends EntityPa
 		return ExtendedDamageSource.causeMobDamage(this.original, stunType, animation);
 	}
 	
-	public float calculateDamageTo(@Nullable Entity targetEntity, @Nullable ExtendedDamageSource source, InteractionHand hand) {
+	public float getDamageTo(@Nullable Entity targetEntity, @Nullable ExtendedDamageSource source, InteractionHand hand) {
 		float damage = 0;
 		
 		if (hand == InteractionHand.MAIN_HAND) {
@@ -180,18 +181,17 @@ public abstract class LivingEntityPatch<T extends LivingEntity> extends EntityPa
 	}
 	
 	public AttackResult tryHarm(Entity target, ExtendedDamageSource damagesource, float amount) {
-		LivingEntityPatch<?> livingpatch = (LivingEntityPatch<?>)target.getCapability(EpicFightCapabilities.CAPABILITY_ENTITY).orElse(null);
-		AttackResult result = (livingpatch != null) ? livingpatch.tryHurt((DamageSource)damagesource, amount) : new AttackResult(AttackResult.ResultType.SUCCESS, amount);
+		LivingEntityPatch<?> entitypatch = (LivingEntityPatch<?>)target.getCapability(EpicFightCapabilities.CAPABILITY_ENTITY).orElse(null);
+		AttackResult result = (entitypatch != null) ? entitypatch.tryHurt((DamageSource)damagesource, amount) : new AttackResult(AttackResult.ResultType.SUCCESS, amount);
 		return result;
-	}
-	
-	public void onBlockedByShield() {
 	}
 	
 	public void onHurtSomeone(Entity target, InteractionHand handIn, ExtendedDamageSource damagesource, float amount, boolean succeed) {
 		int j = EnchantmentHelper.getItemEnchantmentLevel(Enchantments.FIRE_ASPECT, this.getValidItemInHand(handIn));
 		
 		if (target instanceof LivingEntity) {
+			this.getOriginal().doEnchantDamageEffects(this.getOriginal(), target);
+			
 			if (j > 0 && !target.isOnFire()) {
 				target.setSecondsOnFire(j * 4);
 			}
@@ -205,7 +205,8 @@ public abstract class LivingEntityPatch<T extends LivingEntity> extends EntityPa
 	public void gatherDamageDealt(ExtendedDamageSource source, float amount) {}
 	
 	public void setStunReductionOnHit() {
-		this.stunTimeReduction += (1.0F - this.stunTimeReduction) * 0.8F;
+		this.stunTimeReduction += Math.max((1.0F - this.stunTimeReduction) * 0.8F, 0.5F);
+		this.stunTimeReduction = Math.min(1.0F, this.stunTimeReduction);
 	}
 	
 	public float getStunTimeTimeReduction() {

@@ -1,6 +1,6 @@
 package yesman.epicfight.api.animation;
 
-import yesman.epicfight.api.animation.property.Property.ActionAnimationCoordSetter;
+import yesman.epicfight.api.animation.property.AnimationProperty.ActionAnimationCoordSetter;
 import yesman.epicfight.api.animation.types.DynamicAnimation;
 import yesman.epicfight.config.ConfigurationIngame;
 import yesman.epicfight.gameasset.Animations;
@@ -19,9 +19,10 @@ public class AnimationPlayer {
 		this.setPlayAnimation(Animations.DUMMY_ANIMATION);
 	}
 	
-	public void update(LivingEntityPatch<?> entitypatch) {
+	public void tick(LivingEntityPatch<?> entitypatch) {
 		this.prevElapsedTime = this.elapsedTime;
-		this.elapsedTime += ConfigurationIngame.A_TICK * this.getPlay().getPlaySpeed(entitypatch);
+		this.elapsedTime += ConfigurationIngame.A_TICK * this.getAnimation().getPlaySpeed(entitypatch) *
+				(this.isReversed() && this.getAnimation().canBePlayedReverse() ? -1.0F : 1.0F); 
 		
 		if (this.elapsedTime >= this.play.getTotalTime()) {
 			if (this.play.isRepeat()) {
@@ -36,7 +37,8 @@ public class AnimationPlayer {
 				this.prevElapsedTime = this.play.getTotalTime();
 				this.elapsedTime = this.play.getTotalTime() + this.elapsedTime;
 			} else {
-				this.elapsedTime = 0;
+				System.out.println("?? " + this.getAnimation());
+				this.elapsedTime = 0.0F;
 				this.isEnd = true;
 			}
 		}
@@ -49,7 +51,7 @@ public class AnimationPlayer {
 		this.isEnd = animationPlayer.isEnd;
 	}
 	
-	public void resetPlayer() {
+	public void reset() {
 		this.elapsedTime = 0;
 		this.prevElapsedTime = 0;
 		this.isEnd = false;
@@ -59,7 +61,7 @@ public class AnimationPlayer {
 		if (this.doNotResetNext) {
 			this.doNotResetNext = false;
 		} else {
-			this.resetPlayer();
+			this.reset();
 		}
 		
 		this.play = animation;
@@ -71,11 +73,6 @@ public class AnimationPlayer {
 	
 	public TransformSheet getActionAnimationCoord() {
 		return this.actionAnimationCoord;
-	}
-	
-	public void setEmpty() {
-		this.resetPlayer();
-		this.play = Animations.DUMMY_ANIMATION;
 	}
 	
 	public Pose getCurrentPose(LivingEntityPatch<?> entitypatch, float partialTicks) {
@@ -96,7 +93,7 @@ public class AnimationPlayer {
 		this.isEnd = false;
 	}
 	
-	public DynamicAnimation getPlay() {
+	public DynamicAnimation getAnimation() {
 		return this.play;
 	}
 
@@ -113,10 +110,7 @@ public class AnimationPlayer {
 	}
 	
 	public void setReversed(boolean reversed) {
-		if (reversed != this.reversed) {
-			this.setElapsedTime(this.getPlay().getTotalTime() - this.getElapsedTime());
-			this.reversed = reversed;
-		}
+		this.reversed = reversed;
 	}
 	
 	public boolean isEmpty() {

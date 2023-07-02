@@ -1,4 +1,4 @@
-package yesman.epicfight.api.utils.game;
+package yesman.epicfight.api.utils;
 
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.damagesource.EntityDamageSource;
@@ -6,6 +6,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import yesman.epicfight.api.animation.types.AttackAnimation;
 import yesman.epicfight.api.animation.types.StaticAnimation;
+import yesman.epicfight.gameasset.Animations;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch;
 
@@ -28,6 +29,14 @@ public class EpicFightDamageSource extends EntityDamageSource implements Extende
 		this.impact = entitypatch.getImpact(hand);
 		this.armorNegation = entitypatch.getArmorNegation(hand);
 		this.animation = animation;
+	}
+	
+	public EpicFightDamageSource(String damageTypeIn, Entity damageSourceEntityIn, StunType stunType, float impact, float armorNegation) {
+		super(damageTypeIn, damageSourceEntityIn);
+		this.stunType = stunType;
+		this.impact = impact;
+		this.armorNegation = armorNegation;
+		this.animation = Animations.DUMMY_ANIMATION;
 	}
 	
 	@Override

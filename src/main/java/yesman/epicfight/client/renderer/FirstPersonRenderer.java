@@ -68,8 +68,8 @@ public class FirstPersonRenderer extends PatchedLivingEntityRenderer<LocalPlayer
 		OpenMatrix4f.transform(poses[9], headPos, headPos);
 		float pitch = renderInfo.getXRot();
 		
-		boolean flag1 = entitypatch.getClientAnimator().baseLayer.animationPlayer.getPlay() instanceof ActionAnimation;
-		boolean flag2 = entitypatch.getClientAnimator().getCompositeLayer(Priority.MIDDLE).animationPlayer.getPlay() instanceof AimAnimation;
+		boolean flag1 = entitypatch.getClientAnimator().baseLayer.animationPlayer.getAnimation() instanceof ActionAnimation;
+		boolean flag2 = entitypatch.getClientAnimator().getCompositeLayer(Priority.MIDDLE).animationPlayer.getAnimation() instanceof AimAnimation;
 		
 		float zCoord = flag1 ? 0 : poses[0].m32;
 		float posZ = Math.min(headPos.z - zCoord, 0);
@@ -83,7 +83,11 @@ public class FirstPersonRenderer extends PatchedLivingEntityRenderer<LocalPlayer
 		}
 		
 		float interpolation = pitch > 0.0F ? pitch / 90.0F : 0.0F;
-		matStackIn.translate(x, y - 0.1D - (0.2D * (flag2 ? 0.8D : interpolation)), z + 0.1D + (0.7D * (flag2 ? 0.0D : interpolation)) - posZ);
+		
+		double yCorrection = y - 0.1D - (0.2D * (flag2 ? 0.8D : interpolation));
+		double zCorrection = z + 0.1D + (0.7D * (flag2 ? 0.0D : interpolation)) - posZ;
+		
+		matStackIn.translate(x, yCorrection, zCorrection);
 		
 		ClientModel firstModel = entityIn.getModelName().equals("slim") ? ClientModels.LOGICAL_CLIENT.playerFirstPersonAlex : ClientModels.LOGICAL_CLIENT.playerFirstPerson;
 		firstModel.drawAnimatedModel(matStackIn, buffer.getBuffer(EpicFightRenderTypes.animatedModel(entitypatch.getOriginal().getSkinTextureLocation())), packedLightIn, 1.0F, 1.0F, 1.0F, 1.0F, OverlayTexture.NO_OVERLAY, poses);

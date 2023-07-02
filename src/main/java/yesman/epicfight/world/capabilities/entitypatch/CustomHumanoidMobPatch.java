@@ -11,7 +11,6 @@ import net.minecraft.world.entity.ai.behavior.RunIf;
 import net.minecraft.world.entity.schedule.Activity;
 import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.UseAnim;
-import net.minecraftforge.event.entity.living.LivingEvent.LivingUpdateEvent;
 import yesman.epicfight.api.animation.LivingMotion;
 import yesman.epicfight.api.animation.LivingMotions;
 import yesman.epicfight.api.animation.types.StaticAnimation;
@@ -19,7 +18,7 @@ import yesman.epicfight.api.client.animation.ClientAnimator;
 import yesman.epicfight.api.client.animation.Layer;
 import yesman.epicfight.api.data.reloader.MobPatchReloadListener;
 import yesman.epicfight.api.model.Model;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource.StunType;
+import yesman.epicfight.api.utils.ExtendedDamageSource.StunType;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.gameasset.Models;
 import yesman.epicfight.world.capabilities.item.CapabilityItem;
@@ -73,7 +72,9 @@ public class CustomHumanoidMobPatch<T extends PathfinderMob> extends HumanoidMob
 	
 	@Override
 	protected void setWeaponMotions() {
-		
+		if (this.weaponAttackMotions == null) {
+			super.setWeaponMotions();
+		}
 	}
 	
 	@Override
@@ -86,11 +87,6 @@ public class CustomHumanoidMobPatch<T extends PathfinderMob> extends HumanoidMob
 		if (this.provider.getAttributeValues().containsKey(Attributes.ATTACK_DAMAGE)) {
 			this.original.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(this.provider.getAttributeValues().get(Attributes.ATTACK_DAMAGE));
 		}
-	}
-	
-	@Override
-	public void tick(LivingUpdateEvent event) {
-		super.tick(event);
 	}
 	
 	@Override
@@ -125,7 +121,7 @@ public class CustomHumanoidMobPatch<T extends PathfinderMob> extends HumanoidMob
 		} else {
 			if (CrossbowItem.isCharged(this.original.getMainHandItem()))
 				currentCompositeMotion = LivingMotions.AIM;
-			else if (this.getClientAnimator().getCompositeLayer(Layer.Priority.MIDDLE).animationPlayer.getPlay().isReboundAnimation())
+			else if (this.getClientAnimator().getCompositeLayer(Layer.Priority.MIDDLE).animationPlayer.getAnimation().isReboundAnimation())
 				currentCompositeMotion = LivingMotions.NONE;
 			else if (this.original.swinging && this.original.getSleepingPos().isEmpty())
 				currentCompositeMotion = LivingMotions.DIGGING;

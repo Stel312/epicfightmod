@@ -59,13 +59,14 @@ public class AbstractClientPlayerPatch<T extends AbstractClientPlayer> extends P
 	
 	@Override
 	public void updateMotion(boolean considerInaction) {
-		if (this.state.inaction() && considerInaction) {
-			currentLivingMotion = LivingMotions.INACTION;
+		if (this.original.getHealth() <= 0.0F) {
+			currentLivingMotion = LivingMotions.DEATH;
+		} else if (this.state.movementLocked() && considerInaction) {
+			currentLivingMotion = LivingMotions.IDLE;
 		} else {
 			ClientAnimator animator = this.getClientAnimator();
-			if (this.original.getHealth() <= 0.0F) {
-				currentLivingMotion = LivingMotions.DEATH;
-			} else if (original.isFallFlying() || original.isAutoSpinAttack()) {
+			
+			if (original.isFallFlying() || original.isAutoSpinAttack()) {
 				currentLivingMotion = LivingMotions.FLY;
 			} else if (original.getVehicle() != null) {
 				currentLivingMotion = LivingMotions.MOUNT;
@@ -76,10 +77,16 @@ public class AbstractClientPlayerPatch<T extends AbstractClientPlayer> extends P
 			} else if (!original.isOnGround() && original.onClimbable()) {
 				currentLivingMotion = LivingMotions.CLIMB;
 				double y = original.yCloak - original.yCloakO;
+				
 				if (Math.abs(y) < 0.04D) {
 					animator.baseLayer.pause();
 				} else {
 					animator.baseLayer.resume();
+					
+					if (y < 0)
+						animator.baseLayer.animationPlayer.setReversed(true);
+					else 
+						animator.baseLayer.animationPlayer.setReversed(false);
 				}
 			} else {
 				if (original.isUnderWater() && (original.yCloak - original.yCloakO) < -0.005)
@@ -94,13 +101,14 @@ public class AbstractClientPlayerPatch<T extends AbstractClientPlayer> extends P
 					else
 						currentLivingMotion = LivingMotions.WALK;
 					
-					if (original.zza > 0)
-						animator.baseLayer.animationPlayer.setReversed(false);
-					else if (original.zza < 0) {
+					if (original.zza < 0)
 						animator.baseLayer.animationPlayer.setReversed(true);
-					}
+					else 
+						animator.baseLayer.animationPlayer.setReversed(false);
+					
 				} else {
 					animator.baseLayer.animationPlayer.setReversed(false);
+					
 					if (original.isShiftKeyDown())
 						currentLivingMotion = LivingMotions.KNEEL;
 					else
@@ -130,7 +138,7 @@ public class AbstractClientPlayerPatch<T extends AbstractClientPlayer> extends P
 		} else {
 			if (this.original.getMainHandItem().getItem() instanceof ProjectileWeaponItem && CrossbowItem.isCharged(this.original.getMainHandItem()))
 				currentCompositeMotion = LivingMotions.AIM;
-			else if (this.getClientAnimator().getCompositeLayer(Layer.Priority.MIDDLE).animationPlayer.getPlay().isReboundAnimation())
+			else if (this.getClientAnimator().getCompositeLayer(Layer.Priority.MIDDLE).animationPlayer.getAnimation().isReboundAnimation())
 				currentCompositeMotion = LivingMotions.NONE;
 			else if (this.original.swinging && this.original.getSleepingPos().isEmpty())
 				currentCompositeMotion = LivingMotions.DIGGING;
@@ -172,6 +180,7 @@ public class AbstractClientPlayerPatch<T extends AbstractClientPlayer> extends P
 		
 		super.clientTick(event);
 		
+		/** {@link LivingDeathEvent} never fired for client players **/
 		if (this.original.deathTime == 1) {
 			this.getClientAnimator().playDeathAnimation();
 		}
@@ -238,7 +247,7 @@ public class AbstractClientPlayerPatch<T extends AbstractClientPlayer> extends P
 			OpenMatrix4f mat = MathUtils.getModelMatrixIntegral(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0, 0, 0, 0, partialTick, 1, 1, 1);
             float f1 = (float)this.original.getFallFlyingTicks() + partialTick;
             float f2 = Mth.clamp(f1 * f1 / 100.0F, 0.0F, 1.0F);
-            mat.rotateDeg(-this.original.getYRot(), Vec3f.Y_AXIS).rotateDeg(f2 * (-this.original.getXRot()), Vec3f.X_AXIS);
+            mat.rotateDeg(-Mth.rotLerp(partialTick, this.original.yBodyRotO, this.original.yBodyRot), Vec3f.Y_AXIS).rotateDeg(f2 * (-this.original.getXRot()), Vec3f.X_AXIS);
             
             Vec3 vec3d = this.original.getViewVector(partialTick);
             Vec3 vec3d1 = this.original.getDeltaMovement();
@@ -248,7 +257,7 @@ public class AbstractClientPlayerPatch<T extends AbstractClientPlayer> extends P
 			if (d0 > 0.0D && d1 > 0.0D) {
                 double d2 = (vec3d1.x * vec3d.x + vec3d1.z * vec3d.z) / (Math.sqrt(d0) * Math.sqrt(d1));
                 double d3 = vec3d1.x * vec3d.z - vec3d1.z * vec3d.x;
-                mat.rotate((float)((Math.signum(d3) * Math.acos(d2))), Vec3f.Y_AXIS);
+                mat.rotate((float)-((Math.signum(d3) * Math.acos(d2))), Vec3f.Z_AXIS);
             }
 			
             return mat;

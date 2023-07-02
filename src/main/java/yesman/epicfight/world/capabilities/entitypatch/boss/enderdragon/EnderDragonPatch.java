@@ -28,12 +28,12 @@ import yesman.epicfight.api.animation.LivingMotion;
 import yesman.epicfight.api.animation.LivingMotions;
 import yesman.epicfight.api.animation.TransformSheet;
 import yesman.epicfight.api.animation.types.StaticAnimation;
-import yesman.epicfight.api.animation.types.procedural.IKSetter;
+import yesman.epicfight.api.animation.types.procedural.IKInfo;
 import yesman.epicfight.api.animation.types.procedural.TipPointAnimation;
 import yesman.epicfight.api.client.animation.ClientAnimator;
 import yesman.epicfight.api.model.Model;
-import yesman.epicfight.api.utils.game.AttackResult;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource.StunType;
+import yesman.epicfight.api.utils.AttackResult;
+import yesman.epicfight.api.utils.ExtendedDamageSource.StunType;
 import yesman.epicfight.api.utils.math.MathUtils;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.api.utils.math.Vec3f;
@@ -54,7 +54,7 @@ public class EnderDragonPatch extends MobPatch<EnderDragon> {
 	public float xRootO;
 	public float zRoot;
 	public float zRootO;
-	public LivingMotion prevMotion = LivingMotions.IDLE;
+	public LivingMotion prevMotion = LivingMotions.FLY;
 	
 	@Override
 	public void onConstructed(EnderDragon entityIn) {
@@ -64,8 +64,11 @@ public class EnderDragonPatch extends MobPatch<EnderDragon> {
 		this.livingMotions.put(LivingMotions.CHASE, Animations.DRAGON_AIRSTRIKE);
 		this.livingMotions.put(LivingMotions.DEATH, Animations.DRAGON_DEATH);
 		super.onConstructed(entityIn);
+		
+		this.currentLivingMotion = LivingMotions.FLY;
 	}
 	
+	@SuppressWarnings("deprecation")
 	@Override
 	public void onJoinWorld(EnderDragon entityIn, EntityJoinWorldEvent event) {
 		super.onJoinWorld(entityIn, event);
@@ -87,6 +90,7 @@ public class EnderDragonPatch extends MobPatch<EnderDragon> {
 	protected void initAttributes() {
 		super.initAttributes();
 		this.original.getAttribute(EpicFightAttributes.IMPACT.get()).setBaseValue(8.0F);
+		this.original.getAttribute(EpicFightAttributes.MAX_STRIKES.get()).setBaseValue(Double.MAX_VALUE);
 		this.original.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(10.0F);
 	}
 	
@@ -101,8 +105,10 @@ public class EnderDragonPatch extends MobPatch<EnderDragon> {
 	
 	@Override
 	public void updateMotion(boolean considerInaction) {
-		if (this.state.inaction() && considerInaction) {
-			this.currentLivingMotion = LivingMotions.INACTION;
+		if (this.original.getHealth() <= 0.0F) {
+			currentLivingMotion = LivingMotions.DEATH;
+		} else if (this.state.inaction() && considerInaction) {
+			this.currentLivingMotion = LivingMotions.IDLE;
 		} else {
 			DragonPhaseInstance phase = this.original.getPhaseManager().getCurrentPhase();
 			
@@ -200,7 +206,7 @@ public class EnderDragonPatch extends MobPatch<EnderDragon> {
 			DragonPhaseInstance currentPhase = this.original.getPhaseManager().getCurrentPhase();
 			
 			if (currentPhase.getPhase() == PatchedPhases.CRYSTAL_LINK && ((DragonCrystalLinkPhase)currentPhase).getChargingCount() > 0) {
-				this.original.playSound(EpicFightSounds.NEUTRALIZE, 5.0F, 1.0F);
+				this.original.playSound(EpicFightSounds.NEUTRALIZE_BOSSES, 5.0F, 1.0F);
 				this.original.getPhaseManager().setPhase(PatchedPhases.NEUTRALIZED);
 			}
 		}
@@ -311,7 +317,7 @@ public class EnderDragonPatch extends MobPatch<EnderDragon> {
 		return this.tipPointAnimations.get(jointName);
 	}
 	
-	public void addTipPointAnimation(String jointName, Vec3f initpos, TransformSheet transformSheet, IKSetter ikSetter) {
+	public void addTipPointAnimation(String jointName, Vec3f initpos, TransformSheet transformSheet, IKInfo ikSetter) {
 		this.tipPointAnimations.put(jointName, new TipPointAnimation(transformSheet, initpos, ikSetter));
 	}
 	

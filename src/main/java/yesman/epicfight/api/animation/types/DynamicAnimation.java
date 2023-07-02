@@ -14,7 +14,7 @@ import yesman.epicfight.api.animation.JointTransform;
 import yesman.epicfight.api.animation.Keyframe;
 import yesman.epicfight.api.animation.Pose;
 import yesman.epicfight.api.animation.TransformSheet;
-import yesman.epicfight.api.animation.property.Property;
+import yesman.epicfight.api.animation.property.AnimationProperty;
 import yesman.epicfight.api.client.animation.JointMask.BindModifier;
 import yesman.epicfight.config.ConfigurationIngame;
 import yesman.epicfight.gameasset.Animations;
@@ -118,7 +118,7 @@ public abstract class DynamicAnimation {
 	}
 	
 	public EntityState getState(float time) {
-		return EntityState.FREE;
+		return EntityState.DEFAULT;
 	}
 	
 	public Map<String, TransformSheet> getTransfroms() {
@@ -149,6 +149,10 @@ public abstract class DynamicAnimation {
 		return this.isRepeat;
 	}
 	
+	public boolean canBePlayedReverse() {
+		return false;
+	}
+	
 	public int getNamespaceId() {
 		return -1;
 	}
@@ -157,7 +161,7 @@ public abstract class DynamicAnimation {
 		return -1;
 	}
 	
-	public <V> Optional<V> getProperty(Property<V> propertyType) {
+	public <V> Optional<V> getProperty(AnimationProperty<V> propertyType) {
 		return Optional.empty();
 	}
 	

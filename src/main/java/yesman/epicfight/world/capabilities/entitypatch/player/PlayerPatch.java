@@ -18,8 +18,8 @@ import yesman.epicfight.api.animation.LivingMotions;
 import yesman.epicfight.api.animation.types.StaticAnimation;
 import yesman.epicfight.api.client.animation.ClientAnimator;
 import yesman.epicfight.api.model.Model;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource;
-import yesman.epicfight.api.utils.game.ExtendedDamageSource.StunType;
+import yesman.epicfight.api.utils.ExtendedDamageSource;
+import yesman.epicfight.api.utils.ExtendedDamageSource.StunType;
 import yesman.epicfight.api.utils.math.Formulars;
 import yesman.epicfight.gameasset.Animations;
 import yesman.epicfight.gameasset.Models;
@@ -60,12 +60,13 @@ public abstract class PlayerPatch<T extends Player> extends LivingEntityPatch<T>
 	@Override
 	public void onJoinWorld(T entityIn, EntityJoinWorldEvent event) {
 		super.onJoinWorld(entityIn, event);
+		
 		CapabilitySkill skillCapability = this.getSkillCapability();
 		skillCapability.skillContainers[SkillCategories.BASIC_ATTACK.universalOrdinal()].setSkill(Skills.BASIC_ATTACK);
 		skillCapability.skillContainers[SkillCategories.AIR_ATTACK.universalOrdinal()].setSkill(Skills.AIR_ATTACK);
 		skillCapability.skillContainers[SkillCategories.KNOCKDOWN_WAKEUP.universalOrdinal()].setSkill(Skills.KNOCKDOWN_WAKEUP);
 		this.tickSinceLastAction = 0;
-		this.eventListeners.addEventListener(EventType.ACTION_EVENT, ACTION_EVENT_UUID, (playerEvent) -> {
+		this.eventListeners.addEventListener(EventType.ACTION_EVENT_SERVER, ACTION_EVENT_UUID, (playerEvent) -> {
 			this.resetActionTick();
 		});
 	}
@@ -174,23 +175,33 @@ public abstract class PlayerPatch<T extends Player> extends LivingEntityPatch<T>
 	}
 	
 	@Override
-	public float calculateDamageTo(@Nullable Entity targetEntity, @Nullable ExtendedDamageSource source, InteractionHand hand) {
-		return this.getDamageToEntity(targetEntity, source, super.calculateDamageTo(targetEntity, source, hand));
+	public float getDamageTo(@Nullable Entity targetEntity, @Nullable ExtendedDamageSource source, InteractionHand hand) {
+		return this.getModifiedDamage(targetEntity, source, super.getDamageTo(targetEntity, source, hand));
 	}
 	
-	public float getDamageToEntity(@Nullable Entity targetEntity, @Nullable ExtendedDamageSource source, float baseDamage) {
+	public float getModifiedDamage(@Nullable Entity targetEntity, @Nullable ExtendedDamageSource source, float baseDamage) {
+		
 		DealtDamageEvent<PlayerPatch<?>> event = new DealtDamageEvent<>(this, this.original, source, baseDamage);
 		this.getEventListener().triggerEvents(EventType.DEALT_DAMAGE_EVENT_PRE, event);
 		return event.getAttackDamage();
 	}
 	
 	public float getAttackSpeed(InteractionHand hand) {
-		return this.getAttackSpeed(this.getHoldingItemCapability(hand), (float)this.original.getAttributeValue((hand == InteractionHand.MAIN_HAND) ? Attributes.ATTACK_SPEED : EpicFightAttributes.OFFHAND_ATTACK_SPEED.get()));
+		float baseSpeed;
+		
+		if (hand == InteractionHand.MAIN_HAND) {
+			baseSpeed = (float)this.original.getAttributeValue(Attributes.ATTACK_SPEED);
+		} else {
+			baseSpeed = (float) (this.isOffhandItemValid() ? this.original.getAttributeValue(Attributes.ATTACK_SPEED) : this.original.getAttributeBaseValue(Attributes.ATTACK_SPEED));
+		}
+		
+		return this.getModifiedAttackSpeed(this.getAdvancedHoldingItemCapability(hand), baseSpeed);
 	}
 	
-	public float getAttackSpeed(CapabilityItem itemCapability, float baseSpeed) {
+	public float getModifiedAttackSpeed(CapabilityItem itemCapability, float baseSpeed) {
 		AttackSpeedModifyEvent event = new AttackSpeedModifyEvent(this, itemCapability, baseSpeed);
 		this.eventListeners.triggerEvents(EventType.ATTACK_SPEED_MODIFY_EVENT, event);
+		
 		return Formulars.getAttackSpeedPenalty(this.getWeight(), event.getAttackSpeed(), this);
 	}
 	
@@ -223,6 +234,10 @@ public abstract class PlayerPatch<T extends Player> extends LivingEntityPatch<T>
 	
 	public int getTickSinceLastAction() {
 		return this.tickSinceLastAction;
+	}
+	
+	public boolean isUnstable() {
+		return this.original.isFallFlying() || this.currentLivingMotion == LivingMotions.FALL;
 	}
 	
 	public void openSkillBook(ItemStack itemstack, InteractionHand hand) {
