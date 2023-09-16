@@ -1,18 +1,19 @@
 package yesman.epicfight.world.capabilities.entitypatch.mob;
 
+import java.util.Set;
+
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.behavior.MeleeAttack;
 import net.minecraft.world.entity.ai.behavior.MoveToTargetSink;
+import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.monster.piglin.PiglinBrute;
 import net.minecraft.world.entity.schedule.Activity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import yesman.epicfight.api.animation.LivingMotions;
 import yesman.epicfight.api.client.animation.ClientAnimator;
-import yesman.epicfight.api.model.Model;
 import yesman.epicfight.api.utils.math.OpenMatrix4f;
 import yesman.epicfight.gameasset.Animations;
-import yesman.epicfight.gameasset.Models;
 import yesman.epicfight.world.capabilities.entitypatch.Faction;
 import yesman.epicfight.world.capabilities.entitypatch.HumanoidMobPatch;
 import yesman.epicfight.world.entity.ai.attribute.EpicFightAttributes;
@@ -51,8 +52,8 @@ public class PiglinBrutePatch extends HumanoidMobPatch<PiglinBrute> {
 	}
 	
 	@Override
-	public <M extends Model> M getEntityModel(Models<M> modelDB) {
-		return modelDB.piglin;
+	protected void selectGoalToRemove(Set<Goal> toRemove) {
+		BrainRecomposer.removeBehavior(this.original.getBrain(), Activity.FIGHT, 12, MeleeAttack.class);
 	}
 	
 	@Override
@@ -60,7 +61,7 @@ public class PiglinBrutePatch extends HumanoidMobPatch<PiglinBrute> {
 		CombatBehaviors.Builder<HumanoidMobPatch<?>> builder = this.getHoldingItemWeaponMotionBuilder();
 		
 		if (builder != null) {
-			BrainRecomposer.replaceBehavior(this.original.getBrain(), Activity.FIGHT, 12, MeleeAttack.class, new AnimatedCombatBehavior<>(this, builder.build(this)));
+			BrainRecomposer.replaceBehavior(this.original.getBrain(), Activity.FIGHT, 12, AnimatedCombatBehavior.class, new AnimatedCombatBehavior<>(this, builder.build(this)));
 		}
 		
 		BrainRecomposer.replaceBehavior(this.original.getBrain(), Activity.CORE, 1, MoveToTargetSink.class, new MoveToTargetSinkStopInaction());

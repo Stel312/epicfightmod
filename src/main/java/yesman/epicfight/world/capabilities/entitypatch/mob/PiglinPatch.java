@@ -1,5 +1,7 @@
 package yesman.epicfight.world.capabilities.entitypatch.mob;
 
+import java.util.Set;
+
 import io.netty.buffer.ByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.ItemTags;
@@ -8,6 +10,7 @@ import net.minecraft.world.entity.ai.behavior.MeleeAttack;
 import net.minecraft.world.entity.ai.behavior.MoveToTargetSink;
 import net.minecraft.world.entity.ai.behavior.RunIf;
 import net.minecraft.world.entity.ai.behavior.RunOne;
+import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.schedule.Activity;
 import net.minecraft.world.item.CrossbowItem;
@@ -15,9 +18,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import yesman.epicfight.api.animation.LivingMotions;
 import yesman.epicfight.api.client.animation.ClientAnimator;
-import yesman.epicfight.api.model.Model;
 import yesman.epicfight.gameasset.Animations;
-import yesman.epicfight.gameasset.Models;
 import yesman.epicfight.main.EpicFightMod;
 import yesman.epicfight.network.EpicFightNetworkManager;
 import yesman.epicfight.network.server.SPSpawnData;
@@ -84,10 +85,10 @@ public class PiglinPatch extends HumanoidMobPatch<Piglin> {
 		else
 			super.commonAggressiveRangedMobUpdateMotion(considerInaction);
 	}
-
+	
 	@Override
-	public <M extends Model> M getEntityModel(Models<M> modelDB) {
-		return modelDB.piglin;
+	protected void selectGoalToRemove(Set<Goal> toRemove) {
+		BrainRecomposer.removeBehavior(this.original.getBrain(), Activity.FIGHT, 13, MeleeAttack.class);
 	}
 	
 	@Override
@@ -95,7 +96,7 @@ public class PiglinPatch extends HumanoidMobPatch<Piglin> {
 		CombatBehaviors.Builder<HumanoidMobPatch<?>> builder = this.getHoldingItemWeaponMotionBuilder();
 		
 		if (builder != null) {
-			BrainRecomposer.replaceBehavior(this.original.getBrain(), Activity.FIGHT, 13, MeleeAttack.class, new AnimatedCombatBehavior<>(this, builder.build(this)));
+			BrainRecomposer.replaceBehavior(this.original.getBrain(), Activity.FIGHT, 13, AnimatedCombatBehavior.class, new AnimatedCombatBehavior<>(this, builder.build(this)));
 		}
 		
 		BrainRecomposer.replaceBehavior(this.original.getBrain(), Activity.FIGHT, 11, RunIf.class, new RunIf<>((entity) -> entity.isHolding(is -> is.getItem() instanceof CrossbowItem), new BackUpIfTooCloseStopInaction<>(5, 0.75F)));
